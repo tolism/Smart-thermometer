@@ -1,3 +1,15 @@
+/*
+* FILE: main.c
+* THMMY, 8th semester, Microprocessors & Peripherals
+*  
+* Authors:
+*   Moustaklis Apostolos, 9127, amoustakl@ece.auth.gr
+*   Papadakis Charis , 9128, papadakic@ece.auth.gr
+*
+* A smart thermometer with user interaction 
+* 
+*/
+
 #include <platform.h>
 #include <delay.h>
 #include <stdio.h>
@@ -6,7 +18,6 @@
 #include <lcd.h>
 #include <i2c.h>
 #include <timer.h>
-
 
 
 //Pins define
@@ -25,6 +36,7 @@
 #define  ARM_CM_DWT_CYCCNT (*(uint32_t *)0xE0001004)
 
 
+//Global variables 
 uint16_t distance;
 uint32_t distance_time;
 
@@ -53,10 +65,10 @@ char * startMessage = "Please wait"; //Wait for the first measurement
 
 
 //Volatile variables changed at the execution time
-volatile int tempRead=0;                       //Interrupt -> Read Temperature every 5 seconds
-volatile int newSecond=0;                         //Interrupt -> Update the LCD Screen every second
-volatile int readDistance=0;                          //Interrupt -> Calculate the distance every 200ms
-volatile int secondsCounter=0;                      //Interrupt -> Auxilary variable for calculating the above
+volatile int tempRead=0;           //Temperature read every 5 seconds
+volatile int newSecond=0;          //LCD Screen update every 1 second
+volatile int readDistance=0;       //Distance calculation every 200ms
+volatile int secondsCounter=0;     //Variable that calculates seconds  
 
 
 
@@ -75,7 +87,7 @@ float get_temperature(void);
 
 
 int main(void){
-
+//Initialization 
 	leds_init();
 	lcd_init();
 	lcd_clear();
@@ -84,10 +96,12 @@ int main(void){
 	timer_enable();
 	gpio_set_mode(TRIGGER_PIN, Output);
 	gpio_set_mode(ECHO_PIN, Input);
+//Get the temperature for the first LCD update 
 	temperature = get_temperature();
 
 	while(1){
 
+//Update the LCD screen every second 		
 		if(newSecond==1){
 		newSecond = 0;
 	updateLCD(message);
@@ -95,7 +109,7 @@ int main(void){
 	}
 
 
-	//Get distance value every 200ms
+	//Get the distance value every 200ms
 	if(readDistance ==1){
 		readDistance = 0;
 		distance_time = distance_read();
@@ -103,28 +117,28 @@ int main(void){
 		printf(" distance = %d cm\n", distance);
 	}
 
-	//Get temperature value every 5s
+	//Get the temperature value every 5s
 	if(tempRead==1){
 		temperature = get_temperature();
-		printf(" The temperature is %f \n", temperature);
-
 		temperaturesArray[temperaturesArrayIdx]= temperature;
+		//If we get the 24 measurements 
 		if(temperaturesArrayIdx == 23){
 			avgTemperature =  0 ;
-      //calculate the average temperature
+     //Calculating the average temperature
 			for(int i = 0 ; i < 24 ; i ++){
 				avgTemperature += temperaturesArray[i];
 			}
 			avgTemperature = avgTemperature/24;
 			temperaturesArrayIdx = 0;
 		}
+		//Increase the counter to the next index 
 		else{
 			temperaturesArrayIdx++;
 		}
 
 	}
 
-  //Check for High/Low Temperatures
+  //Check for High/Normal/ Low Temperatures
 if(temperature > temp_high){
 	leds_set(1,0,0);
 	temperatureState = 1;
@@ -144,20 +158,20 @@ else{
 }
 
 	//Find the message to be printed
-	if (distance <= dist && avgTemperature !=0) {                                        //If user close to device
+	if (distance <= dist && avgTemperature !=0) {            //If the user is close to the device
 		message = 1 ;
 	}
-	else if(distance > dist && temperaturesArrayIdx>2 && temperaturesArrayIdx<24){  //Print LEDs' state (main LCD message)
+	else if(distance > dist && temperaturesArrayIdx>2 && temperaturesArrayIdx<24){  //Print LEDs state (
 	  message = 4;
 	}
 	else if(distance > dist && temperaturesArrayIdx<=2 && avgTemperature == 0  ){   //Wait for the first mean temp to be calculated
    message = 4 ;
   }
-	else if(distance < dist  && avgTemperature == 0  ){
+	else if(distance < dist  && avgTemperature == 0  ){    //Please wait for the first average temperature measurement 
     message = 3 ;
 		temperatureState = 4;
 	}
-	else{                                                         //New mean temp is calculated, print for 10 secs
+	else{                                                         //Print the average temperature for 10seconds
    message = 2;
 	}
 	}
@@ -165,6 +179,9 @@ else{
 }
 
 
+//Helper functions Implementation
+
+//Function to get the temperature
 float get_temperature(void){
 			tempRead = 0 ;
 		presence = temperature_start();
@@ -186,7 +203,7 @@ float get_temperature(void){
 	return 	temperature = (float)temp / 16;
 }
 
-
+//Function to update the LCD panel
 void updateLCD(int message){
 
 		char str[20] = {0};
@@ -232,6 +249,7 @@ switch (message){
 
 }
 
+//Function to print the state ( H/N/L ) at the LCD panel
 void heat_state_print(int message){
 	switch(message){
 		case 1:
@@ -256,6 +274,7 @@ void heat_state_print(int message){
 }
 
 
+//Timer isr function
 void timer_isr(void)
 {
 	secondsCounter = secondsCounter+1;
@@ -270,6 +289,7 @@ void timer_isr(void)
 }
 
 
+//Initialization of the timer used to get the distance from the sensor 
 void init_timer(){
 	if (ARM_CM_DWT_CTRL != 0) {      // See if DWT is available
 		ARM_CM_DEMCR      |= 1 << 24;  // Set bit 24
@@ -280,9 +300,7 @@ void init_timer(){
 	}
 }
 
-
-
-
+//Function to read the distance from the sensor
 uint32_t distance_read() {
 	init_timer();
 	uint32_t start;
@@ -298,7 +316,6 @@ uint32_t distance_read() {
 
 	while(!(gpio_get(ECHO_PIN)));
 
-//ena apo ta 2 den prepei na xreiazete
 	start = ARM_CM_DWT_CYCCNT;
 
 	while(gpio_get(ECHO_PIN));
@@ -310,7 +327,7 @@ uint32_t distance_read() {
 	return 2*total_time;
 }
 
-
+//Function to start communicating with the temperature sensor
 uint8_t temperature_start(void) {
 	int response = 0;
 	gpio_set_mode(TEMP_PIN, Output);
@@ -331,6 +348,7 @@ uint8_t temperature_start(void) {
 	return response;
 }
 
+//Function to write to the temperature sensor the command to execute
 void temperature_write(uint8_t data) {
 
 	gpio_set_mode(TEMP_PIN, Output);
@@ -355,6 +373,7 @@ void temperature_write(uint8_t data) {
 	}
 }
 
+//Function to read from the temperature sensor
 uint8_t temperature_read(void) {
 
 	uint8_t value = 0;
